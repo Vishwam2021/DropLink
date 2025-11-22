@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ShareData, TabMode } from './types';
 import { createShare, getShare } from './services/shareService';
-import { MAX_FILE_SIZE_BYTES, MAX_TEXT_LENGTH, ERROR_MESSAGES, CODE_LENGTH } from './constants';
+import { MAX_FILE_SIZE_BYTES, MAX_TEXT_LENGTH, ERROR_MESSAGES, CODE_LENGTH, EXPIRY_OPTIONS } from './constants';
 import Button from './components/Button';
 import { 
   UploadCloudIcon, 
@@ -20,9 +20,10 @@ const App: React.FC = () => {
   // -- SEND STATE --
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [expiryHours, setExpiryHours] = useState<number>(EXPIRY_OPTIONS[2].value); // Default 24 hours
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [createdShare, setCreatedShare] = useState<{code: string, expiresAt: number} | null>(null);
+  const [createdShare, setCreatedShare] = useState<{code: string, expiresAt: Date} | null>(null);
   const [hasCopied, setHasCopied] = useState(false);
   
   // -- RECEIVE STATE --
@@ -58,10 +59,14 @@ const App: React.FC = () => {
     setSendError(null);
 
     try {
-      const response = await createShare(text, file);
+      const response = await createShare(text, file, expiryHours);
       setCreatedShare(response);
-    } catch (err) {
-      setSendError(ERROR_MESSAGES.NETWORK_ERROR);
+    } catch (err: any) {
+      if (err.message === 'CONFIG_ERROR') {
+         setSendError("Setup Required: Add Appwrite details to constants.ts");
+      } else {
+         setSendError(ERROR_MESSAGES.NETWORK_ERROR);
+      }
     } finally {
       setIsSending(false);
     }
@@ -108,6 +113,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') setRetrieveError(ERROR_MESSAGES.NOT_FOUND);
       else if (err.message === 'EXPIRED') setRetrieveError(ERROR_MESSAGES.EXPIRED);
+      else if (err.message === 'CONFIG_ERROR') setRetrieveError("Setup Required: Check constants.ts");
       else setRetrieveError(ERROR_MESSAGES.NETWORK_ERROR);
     } finally {
       setIsRetrieving(false);
@@ -180,15 +186,12 @@ const App: React.FC = () => {
                     <textarea
                       id="share-text"
                       className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none resize-none"
-                      rows={4}
+                      rows={3}
                       placeholder="Type something to share..."
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       maxLength={MAX_TEXT_LENGTH}
                     />
-                    <div className="text-xs text-right text-slate-400">
-                      {text.length}/{MAX_TEXT_LENGTH}
-                    </div>
                   </div>
 
                   {/* File Input */}
@@ -235,6 +238,28 @@ const App: React.FC = () => {
                     )}
                   </div>
 
+                  {/* Expiry Selector */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Expires In
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {EXPIRY_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => setExpiryHours(option.value)}
+                          className={`py-2 text-xs sm:text-sm font-medium rounded-lg border transition-all ${
+                            expiryHours === option.value
+                              ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-primary-300 hover:bg-primary-50'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Error Message */}
                   {sendError && (
                     <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg flex items-start gap-2">
@@ -269,7 +294,7 @@ const App: React.FC = () => {
                       {createdShare.code}
                     </div>
                     <p className="text-slate-400 text-xs mt-2">
-                      Expires in 24 hours
+                      Expires at {createdShare.expiresAt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </p>
                   </div>
 
@@ -375,8 +400,9 @@ const App: React.FC = () => {
                             <p className="text-xs text-slate-500">{formatBytes(retrievedShare.file.size)}</p>
                           </div>
                           <a 
-                            href={retrievedShare.file.dataUrl} 
-                            download={retrievedShare.file.name}
+                            href={retrievedShare.file.downloadUrl} 
+                            target="_blank"
+                            rel="noreferrer"
                             className="flex items-center justify-center bg-primary-600 hover:bg-primary-700 text-white p-2 rounded-lg transition-colors shadow-sm shadow-primary-500/30"
                             title="Download"
                           >
@@ -398,7 +424,7 @@ const App: React.FC = () => {
         {/* Footer info */}
         <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
           <p className="text-xs text-slate-400">
-            Files are automatically deleted after 24 hours.
+            Files are automatically deleted after expiry.
           </p>
         </div>
       </div>

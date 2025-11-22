@@ -11,17 +11,23 @@ export interface ShareData {
     name: string;
     size: number;
     type: string;
-    dataUrl: string; // Using DataURL for local simulation. Appwrite would use fileId/bucketId.
+    fileId: string; // ID reference to Appwrite Storage
+    downloadUrl?: string; // Generated URL
   };
-  createdAt: number;
-  expiresAt: number;
+  createdAt: string; // ISO String for Appwrite
+  expiresAt: string; // ISO String for Appwrite
   status: ShareStatus;
   downloadCount: number;
 }
 
 export interface CreateShareResponse {
   code: string;
-  expiresAt: number;
+  expiresAt: Date;
+}
+
+export interface ExpiryOption {
+  label: string;
+  value: number; // Hours
 }
 
 export type TabMode = 'send' | 'receive';
